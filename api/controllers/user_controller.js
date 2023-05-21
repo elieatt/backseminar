@@ -51,7 +51,7 @@ const signUpUser = async (req, res) => {
         const existingUser = await User.findOne({ email });
         if (existingUser) {
             return res.status(400).json({
-                error: 'Email already exists',
+                error       : 'Email already exists',
             });
         }
 
@@ -131,7 +131,7 @@ const renewToken = async (req, res) => {
        
         const currentTimestamp = Math.floor(Date.now() / 1000);
         if (currentTimestamp < decodedToken.exp) {
-          return res.status(401).json({ message: 'Token has not expired' });
+          return res.status(401).json({ error: 'Token has not expired' });
         }
         const userId = decodedToken.id;
 
