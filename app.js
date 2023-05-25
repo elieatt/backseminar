@@ -4,7 +4,7 @@ const morgan = require("morgan");
 const bodyparser = require("body-parser");
 const auth_check = require('./api/middlewares/auth_check');
 const userRouter = require('./api/routes/user_router');
-
+const setupSocketIO = require('./api/sockets/livestream_socket');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const mongodbURL = `mongodb+srv://elieisadmin:${encodeURIComponent(process.env.MONGOPASS)}@cluster0.xumcwj8.mongodb.net/?retryWrites=true&w=majority`
@@ -45,6 +45,7 @@ app.use("/users", usersRoutes);
 app.use("/messages",auth_check,messagesRoutes);
  */
 app.use('/user', userRouter);
+//app.use('/livestreams', require('./api/routes/livestream_router'));
 
 app.use((req, res, next) => {
     const error = new Error();
@@ -60,6 +61,12 @@ app.use((error, req, res, next) => {
 })
 
 
-app.listen(PORT, () => {
+const server =app.listen(PORT, () => {
     console.log(`server is running on port ${PORT}`);
+    setupSocketIO(server);
+    
 });
+
+
+
+
