@@ -18,7 +18,11 @@ const livestreamSchema = new Schema({
     type: String,
     required: true
   },
-  
+  imageUrl: {
+    type: String,
+    required: false,
+    default: "https://thumbs.dreamstime.com/b/live-stream-logo-design-vector-illustration-design-template-live-stream-logo-design-vector-illustration-161152543.jpg"
+  },
   viewers: {
     count: {
       type: Number,
@@ -33,7 +37,7 @@ const livestreamSchema = new Schema({
   },
   startedAt: {
     type: String,
-    default: new Date().toISOString(),
+    default: () => new Date().toISOString(),
   }
 });
 

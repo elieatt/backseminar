@@ -27,7 +27,7 @@ const userSchema = mongoose.Schema({
     transform:(doc, ret) => {
       delete ret.password;
       delete ret.livestream;
-     // delete  ret.id;
+     // delete  ret._id;//the id not _id is still in the response
       delete ret.__v;
     }
   });

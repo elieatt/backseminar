@@ -9,6 +9,8 @@ const liveStreamCreationSchema = Joi.object({
   title: Joi.string().min(1).required(),
   description: Joi.string().min(1).required(),
   broadcaster: Joi.string().required(),
+  imageUrl: Joi.string().allow(null).optional()
+
 });
 
 function setupSocketIO(server) {
@@ -26,57 +28,65 @@ function setupSocketIO(server) {
 
       // Add the decoded userId object to the socket for future use
       socket.payload = decoded;
-      console.log(socket.payload.id);
-      console.log("socket ID is " + socket.id);
+      /*  //console.log(socket.payload.id);
+       //console.log("socket ID is " + socket.id); */
       next();
     });
   });
 
   // Event handler for the /live namespace
   liveStreamIO.on('connection', (socket) => {
-    console.log('A new client has connected to /live');
-    console.log("another socket id " + socket.id);
+    //console.log('A new client has connected to /live');
+    //console.log("another socket id " + socket.id);
 
     // Send alllivestreams to the new client on connection
-    Livestream.find().then((livestreams) => {
+    Livestream.find().populate({ path: 'broadcaster', model: 'User' }).then((livestreams) => {
+      //console.log('init ', livestreams);
       socket.emit('init', livestreams);
     });
 
-    socket.on('create', (data) => {
+    socket.on('create', async (data) => {
       try {
         const { error, value } = liveStreamCreationSchema.validate(data);
 
         if (error) {
           // Send the validation error to the client
           socket.emit('createError', error.message);
+          return;
         } else {
-          const newLiveStram=new Livestream({_id: new mongoose.Types.ObjectId(),
-          title:data.title,
-          description:data.description,
-          broadcaster:data.broadcaster
+          const userBroadcster = await User.findById(data.broadcaster);
+          console.log(userBroadcster);
+          if (userBroadcster == null || userBroadcster.livestream != null) {
+            socket.emit('createError');
+            //console.log("hi elie");
+            return;
+          }
+          const newLiveStream = new Livestream({
+            _id: new mongoose.Types.ObjectId(),
+            title: data.title,
+            description: data.description,
+            broadcaster: data.broadcaster,
+            imageUrl: data.imageUrl,
           });
-          newLiveStram.save().then((livestream) => {
-            console.log(livestream);
-            // Update the corresponding user document with the new livestream reference
-            User.findByIdAndUpdate(livestream.broadcaster, { livestream: livestream._id }).then(() => {
-              liveStreamIO.emit('create', livestream);
+          newLiveStream.save().then((nlivestream) => {
+            Livestream.populate(nlivestream, { path: 'broadcaster', model: 'User' }).then(populatedLivestream => {
+              User.findByIdAndUpdate(nlivestream.broadcaster, { livestream: nlivestream._id }).then(() => {
+                //console.log(populatedLivestream);
+                socket.emit('createSucceed', populatedLivestream);
+                liveStreamIO.emit('create', populatedLivestream);
+              });
             });
           });
-          // Create a new livestream and send it to all clients
-          /* Livestream.create(data).then((livestream) => {
-            // Update the corresponding user document with the new livestream reference
-            User.findByIdAndUpdate(livestream.broadcaster, { livestream: livestream._id }).then(() => {
-              liveStreamIO.emit('create', livestream);
-            });
-          }); */
+
         }
       } catch (e) {
-        console.log(e);
+        //console.log(e);
+        socket.emit('createError', e.message);
       }
     });
 
     socket.on('disconnect', () => {
-      console.log('A client has disconnected from /live');
+      //console.log('A client has disconnected from /live');
 
       // Get the ID of the disconnected user
       const userId = socket.payload.id;
@@ -86,15 +96,15 @@ function setupSocketIO(server) {
         if (!user || !user.livestream) {
           return;
         }
-       const  tobeDeletedLivestreamId=user.livestream._id;
+        const tobeDeletedLivestreamId = user.livestream._id;
         // Delete the livestream document from the database
         Livestream.findByIdAndDelete(tobeDeletedLivestreamId).then(() => {
-          console.log(tobeDeletedLivestreamId);
+          //console.log(tobeDeletedLivestreamId);
           // Update the user document with null livestream field
           user.livestream = null;
           user.save().then(() => {
-            // Notify all clients that the livestream has ended
-           liveStreamIO.emit('end', tobeDeletedLivestreamId);
+            // Notify all clients that the livestream has ended.
+            liveStreamIO.emit('end', tobeDeletedLivestreamId);
           });
         });
       });

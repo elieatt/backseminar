@@ -10,7 +10,7 @@ module.exports = (req, res, next) => {
         next();
     } catch {
         console.log("token verify error");
-        res.status(401).json({
+        res.status(403).json({
             message: "auth failed"
         });
     }

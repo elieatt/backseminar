@@ -30,7 +30,7 @@ const signUpSchema = Joi.object({
     email: Joi.string().email().required(),
     password: Joi.string().min(8).required(),
     name: Joi.string().required(),
-    
+
 });
 
 // Function to sign up a new user
@@ -45,13 +45,13 @@ const signUpUser = async (req, res) => {
             });
         }
 
-        const { email, password, name,  } = value;
+        const { email, password, name, } = value;
 
         // Check if the email already exists in the database
         const existingUser = await User.findOne({ email });
         if (existingUser) {
             return res.status(400).json({
-                error       : 'Email already exists',
+                error: 'Email already exists',
             });
         }
 
@@ -64,7 +64,7 @@ const signUpUser = async (req, res) => {
             email,
             password: hashedPassword,
             name,
-            
+
         });
 
         // Save the new user to the database
@@ -109,7 +109,7 @@ const signInUser = async (req, res) => {
         }
 
         // Generate a JSON Web Token
-        const token = jwt.sign({ id: user.id }, process.env.JWTPRIVATE, { expiresIn: '1h' });
+        const token = jwt.sign({ id: user.id }, process.env.JWTPRIVATE, { expiresIn: '60d' });
 
         return res.json({
             user: user,
@@ -129,27 +129,31 @@ const renewToken = async (req, res) => {
 
         // Verify the existing token
         const decodedToken = jwt.verify(token, process.env.JWTPRIVATE);
-       
+
         const currentTimestamp = Math.floor(Date.now() / 1000);
         if (currentTimestamp < decodedToken.exp) {
-          return res.status(401).json({ error: 'Token has not expired' });
+            return res.status(401).json({ error: 'Token has not expired' });
         }
         const userId = decodedToken.id;
 
         // Find the user in the database
         const user = await User.findById(userId);
+        console.log(user);
         if (!user) {
+            console.log("user was not found");
             return res.status(400).json({
+
                 error: 'User not found',
             });
         }
 
         // Generate a new JSON Web Token with a new expiration time
-        const newToken = jwt.sign({ id: user.id }, process.env.JWTPRIVATE, { expiresIn: '1h' });
+        const newToken = jwt.sign({ id: user.id }, process.env.JWTPRIVATE, { expiresIn: '60d' });
         return res.status(200).json({
             token: newToken,
         });
     } catch (err) {
+        console.log(err);
         return res.status(400).json({
             error: err.message,
         });
