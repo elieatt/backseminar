@@ -5,7 +5,7 @@ const Livestream = require('../models/livestreamingModel');
 // GET all livestreams
 router.get('/', (req, res, next) => {
   Livestream.find()
-    .populate('broadcaster', '_id name email')
+    .populate('broadcaster', '_id name email uuid')
     .then((livestreams) => {
       res.status(200).json(livestreams);
     })
@@ -15,7 +15,7 @@ router.get('/', (req, res, next) => {
 // GET a single livestream by id
 router.get('/:id', (req, res, next) => {
   Livestream.findById(req.params.id)
-    .populate('broadcaster', '_id name email')
+    .populate('broadcaster', '_id name email uuid')
     .then((livestream) => {
       if (!livestream) {
         const err = new Error('Livestream not found');
@@ -45,7 +45,7 @@ router.post('/', (req, res, next) => {
 // PUT (update) a livestream by id
 router.put('/:id', (req, res, next) => {
   Livestream.findByIdAndUpdate(req.params.id, req.body, { new: true })
-    .populate('broadcaster', '_id name email')
+    .populate('broadcaster', '_id name email uuid')
     .then((updatedLivestream) => {
       if (!updatedLivestream) {
         const err = new Error('Livestream not found');

@@ -8,6 +8,18 @@ const cookieParser = require('cookie-parser');
 const User = require('../models/userModel');
 const { default: mongoose } = require('mongoose');
 
+function generateUniqueRandomInt(min, max) {
+    const randomInt = Math.floor(Math.random() * (max - min + 1) + min);
+    return User.findOne({ uuid: randomInt })
+        .then(doc => {
+            if (doc) {
+                return generateUniqueRandomInt(min, max);
+            } else {
+                return randomInt;
+            }
+        });
+}
+
 const signUpLimit = rateLimit({
     windowMs: 10 * 60 * 1000, // 10 minutes
     max: 5, // limit each IP to 5 requests
@@ -58,12 +70,15 @@ const signUpUser = async (req, res) => {
         // Hash the password using bcrypt
         const hashedPassword = await bcrypt.hash(password, 10);
 
+        const uuid = await generateUniqueRandomInt(1000000000, 9999999999);
+
         // Create a new user instance
         const newUser = new User({
             _id: new mongoose.Types.ObjectId(),
             email,
             password: hashedPassword,
             name,
+            uuid: uuid
 
         });
 
@@ -109,7 +124,7 @@ const signInUser = async (req, res) => {
         }
 
         // Generate a JSON Web Token
-        const token = jwt.sign({ id: user.id }, process.env.JWTPRIVATE, { expiresIn: '60d' });
+        const token = jwt.sign({ uuid: user.uuid }, process.env.JWTPRIVATE, { expiresIn: '60d' });
 
         return res.json({
             user: user,
@@ -134,10 +149,10 @@ const renewToken = async (req, res) => {
         if (currentTimestamp < decodedToken.exp) {
             return res.status(401).json({ error: 'Token has not expired' });
         }
-        const userId = decodedToken.id;
+        const userUuid = decodedToken.uuid;
 
         // Find the user in the database
-        const user = await User.findById(userId);
+        const user = await User.findOne({uuid:userUuid});
         console.log(user);
         if (!user) {
             console.log("user was not found");
@@ -148,7 +163,7 @@ const renewToken = async (req, res) => {
         }
 
         // Generate a new JSON Web Token with a new expiration time
-        const newToken = jwt.sign({ id: user.id }, process.env.JWTPRIVATE, { expiresIn: '60d' });
+        const newToken = jwt.sign({ uuid: user.uuid }, process.env.JWTPRIVATE, { expiresIn: '60d' });
         return res.status(200).json({
             token: newToken,
         });

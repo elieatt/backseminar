@@ -8,7 +8,7 @@ const mongoose = require('mongoose');
 const liveStreamCreationSchema = Joi.object({
   title: Joi.string().min(1).required(),
   description: Joi.string().min(1).required(),
-  broadcaster: Joi.string().required(),
+  broadcaster: Joi.number().required(),
   imageUrl: Joi.string().allow(null).optional()
 
 });
@@ -36,13 +36,39 @@ function setupSocketIO(server) {
 
   // Event handler for the /live namespace
   liveStreamIO.on('connection', (socket) => {
-    //console.log('A new client has connected to /live');
-    //console.log("another socket id " + socket.id);
 
-    // Send alllivestreams to the new client on connection
-    Livestream.find().populate({ path: 'broadcaster', model: 'User' }).then((livestreams) => {
-      //console.log('init ', livestreams);
+    Livestream.find().populate({ path: 'broadcaster', model: 'User' }).populate({ path: 'viewers.users.user', select: 'name email uuid', model: 'User' }).then((livestreams) => {
+
       socket.emit('init', livestreams);
+    });
+
+    
+
+    socket.on('disconnect', async () => {
+      const userUuid = socket.payload.uuid;
+
+      try {
+        // Find the user document with the corresponding ID
+        const user = await User.findOne({ uuid: userUuid }).populate('livestream');
+
+        if (!user || !user.livestream) {
+          return;
+        }
+
+        const tobeDeletedLivestreamId = user.livestream._id;
+
+        // Delete the livestream document from the database
+        await Livestream.findByIdAndDelete(tobeDeletedLivestreamId);
+
+        // Update the user document with null livestream field
+        user.livestream = null;
+        await user.save();
+
+        // Notify all clients that the livestream has ended.
+        liveStreamIO.emit('end', tobeDeletedLivestreamId);
+      } catch (err) {
+        console.error(err);
+      }
     });
 
     socket.on('create', async (data) => {
@@ -54,8 +80,8 @@ function setupSocketIO(server) {
           socket.emit('createError', error.message);
           return;
         } else {
-          const userBroadcster = await User.findById(data.broadcaster);
-          console.log(userBroadcster);
+          const userBroadcster = await User.findOne({ uuid: data.broadcaster });
+          //console.log(userBroadcster);
           if (userBroadcster == null || userBroadcster.livestream != null) {
             socket.emit('createError');
             //console.log("hi elie");
@@ -65,49 +91,61 @@ function setupSocketIO(server) {
             _id: new mongoose.Types.ObjectId(),
             title: data.title,
             description: data.description,
-            broadcaster: data.broadcaster,
+            broadcaster: userBroadcster._id,
             imageUrl: data.imageUrl,
           });
-          newLiveStream.save().then((nlivestream) => {
-            Livestream.populate(nlivestream, { path: 'broadcaster', model: 'User' }).then(populatedLivestream => {
-              User.findByIdAndUpdate(nlivestream.broadcaster, { livestream: nlivestream._id }).then(() => {
-                //console.log(populatedLivestream);
-                socket.emit('createSucceed', populatedLivestream);
-                liveStreamIO.emit('create', populatedLivestream);
-              });
-            });
-          });
+
+          let nlivestream = await newLiveStream.save();
+          await User.findByIdAndUpdate(nlivestream.broadcaster, { livestream: nlivestream._id });
+          nlivestream = await Livestream.findById(newLiveStream._id).populate({ path: 'broadcaster', model: 'User' }).populate({ path: 'viewers.users.user', select: 'name email uuid', model: 'User' });
+
+          socket.emit('createSucceed', nlivestream);
+          liveStreamIO.emit('create', nlivestream);
 
         }
       } catch (e) {
-        //console.log(e);
+        console.log(e);
         socket.emit('createError', e.message);
       }
     });
 
-    socket.on('disconnect', () => {
-      //console.log('A client has disconnected from /live');
+    socket.on('join-livestream', async (lsID) => {
+      try {
+        const fetchedLivestream = await Livestream.findById(lsID);
+        const joinedUser = await User.findOne({ uuid: socket.payload.uuid });
+        let livestreamAfterJoin = await fetchedLivestream.addViewer(joinedUser);
+        livestreamAfterJoin = await Livestream.findById(livestreamAfterJoin._id).populate({ path: 'broadcaster', model: 'User' }).populate({ path: 'viewers.users.user', select: 'name email uuid', model: 'User' });
 
-      // Get the ID of the disconnected user
-      const userId = socket.payload.id;
+        socket.emit('join-success');
+        liveStreamIO.emit('update-livestreams', livestreamAfterJoin);
+        //socket.join(lsID);
+      } catch (e) {
+        console.log(e);
 
-      // Find the user document with the corresponding ID
-      User.findById(userId).populate('livestream').then((user) => {
-        if (!user || !user.livestream) {
-          return;
-        }
-        const tobeDeletedLivestreamId = user.livestream._id;
-        // Delete the livestream document from the database
-        Livestream.findByIdAndDelete(tobeDeletedLivestreamId).then(() => {
-          //console.log(tobeDeletedLivestreamId);
-          // Update the user document with null livestream field
-          user.livestream = null;
-          user.save().then(() => {
-            // Notify all clients that the livestream has ended.
-            liveStreamIO.emit('end', tobeDeletedLivestreamId);
-          });
-        });
-      });
+        socket.emit('join-error');
+
+      }
+
+
+    });
+
+
+    socket.on('leave-livestraem',async (lsId) => {
+     try{
+      const fetchedLivestream = await Livestream.findById(lsId);
+      const userToLeave = User.findOne({uuid:socket.payload.uuid});
+      let lsAfterLeaving= await fetchedLivestream.removeViewer(userToLeave);
+      lsAfterLeaving = await Livestream.findById(lsAfterLeaving._id).populate({ path: 'broadcaster', model: 'User' }).populate({ path: 'viewers.users.user', select: 'name email uuid', model: 'User' });
+      liveStreamIO.emit('update-livestreams',lsAfterLeaving);
+      socket.emit('leave-success');
+    }catch(e){
+      console.log(e);
+      socket.emit('leave-error');
+     }
+
+    });
+    socket.on('send-message', (message, uid) => {
+      socket.emit('recive-message', message, uid);
     });
   });
 }
