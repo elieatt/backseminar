@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 const Schema = mongoose.Schema;
-const Messgae = require('./messageModel');
+const Message = require('./messageModel');
 
 /* const viewerSchema = new Schema({
   user: {
@@ -36,10 +36,12 @@ const livestreamSchema = new Schema({
       type: Number,
       default: 0
     },
-    users: [{user: {
-      type: Schema.Types.ObjectId,
-      ref: 'User'
-  }}]
+    users: [{
+      user: {
+        type: Schema.Types.ObjectId,
+        ref: 'User'
+      }
+    }]
   },
   messages: [messageSchema],
   broadcaster: {
@@ -75,15 +77,17 @@ livestreamSchema.methods.removeViewer = async function (user) {
 };
 livestreamSchema.methods.addMessage = async function (message) {
   const newMessage = new Message({
-    _id: mongoose.Types.ObjectId(),
-    sender: message.sender,
+    _id: new mongoose.Types.ObjectId(),
+    senderUIID: message.senderUIID,
     messageBody: message.messageBody,
-    livestream: this._id
+    liveStream: this._id,
+    senderName: message.senderName
   });
 
   await newMessage.save();
-  this.messages.push(newMessage);
+  this.messages.push({ message: newMessage }); // add the new Message object to the messages array
   await this.save();
+  return newMessage;
 };
 
 livestreamSchema.set('toJSON', {
@@ -91,6 +95,19 @@ livestreamSchema.set('toJSON', {
   transform: (doc, ret) => {
     delete ret.__v;
     delete ret.messages;
+  }
+});
+livestreamSchema.pre(/^delete/, async function (next) {
+  try {
+    // Remove all messages associated with this livestream
+    var livestreamId = this.getFilter()['_id'];;
+
+    await Message.deleteMany({ liveStream: livestreamId });
+
+    next();
+  } catch (err) {
+    console.log(err);
+    next(err);
   }
 });
 

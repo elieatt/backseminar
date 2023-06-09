@@ -70,5 +70,27 @@ router.delete('/:id', (req, res, next) => {
     })
     .catch((err) => next(err));
 });
+router.get('/messages/:id', async (req, res, next) => {
+  try {
+    const userId = req._id;
+    const ls = await Livestream.findById(req.params.id);
+    if (ls && ls.viewers.users.some(obj => obj.user.equals(userId))) {
+      const arr = await Livestream.findById(req.params.id).populate('messages.message');
+      const messages=arr.messages;
+      res.status(200).json({
+        messages: messages
+      });
+      return;
+    }
+    res.status(400);
+    return;
+  } catch (e) {
+    console.log(e);
+    res.status(500).json({
+      message: 'error'
+    });
+  }
+
+});
 
 module.exports = router;

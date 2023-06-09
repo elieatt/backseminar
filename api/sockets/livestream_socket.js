@@ -42,7 +42,7 @@ function setupSocketIO(server) {
       socket.emit('init', livestreams);
     });
 
-    
+
 
     socket.on('disconnect', async () => {
       const userUuid = socket.payload.uuid;
@@ -58,7 +58,8 @@ function setupSocketIO(server) {
         const tobeDeletedLivestreamId = user.livestream._id;
 
         // Delete the livestream document from the database
-        await Livestream.findByIdAndDelete(tobeDeletedLivestreamId);
+        await Livestream.deleteOne({_id:tobeDeletedLivestreamId});
+
 
         // Update the user document with null livestream field
         user.livestream = null;
@@ -99,6 +100,7 @@ function setupSocketIO(server) {
           await User.findByIdAndUpdate(nlivestream.broadcaster, { livestream: nlivestream._id });
           nlivestream = await Livestream.findById(newLiveStream._id).populate({ path: 'broadcaster', model: 'User' }).populate({ path: 'viewers.users.user', select: 'name email uuid', model: 'User' });
 
+          socket.join(`${nlivestream._id}`);
           socket.emit('createSucceed', nlivestream);
           liveStreamIO.emit('create', nlivestream);
 
@@ -110,14 +112,16 @@ function setupSocketIO(server) {
     });
 
     socket.on('join-livestream', async (lsID) => {
-     
+
       try {
         const fetchedLivestream = await Livestream.findById(lsID);
         const joinedUser = await User.findOne({ uuid: socket.payload.uuid });
-         await fetchedLivestream.addViewer(joinedUser);
+        await fetchedLivestream.addViewer(joinedUser);
         let livestreamAfterJoin = await Livestream.findById(fetchedLivestream._id).populate({ path: 'broadcaster', model: 'User' }).populate({ path: 'viewers.users.user', select: 'name email uuid', model: 'User' });
-
+        socket.join(`${fetchedLivestream._id}`);
         socket.emit('join-success');
+        console.log(socket.rooms);
+
         liveStreamIO.emit('update-livestreams', livestreamAfterJoin);
         //socket.join(lsID);
       } catch (e) {
@@ -131,38 +135,52 @@ function setupSocketIO(server) {
     });
 
 
-    socket.on('leave-livestraem',async (lsId) => {
-     try{
-      const fetchedLivestream = await Livestream.findById(lsId);
-      const userToLeave = await User.findOne({uuid:socket.payload.uuid});
-      console.log("leaving");
-      if (userToLeave._id.equals(fetchedLivestream.broadcaster)){
-          
-        console.log("true");
-        // Delete the livestream document from the database
-        await Livestream.findByIdAndDelete(fetchedLivestream._id);
+    socket.on('leave-livestraem', async (lsId) => {
+      try {
+        const fetchedLivestream = await Livestream.findById(lsId);
+        const userToLeave = await User.findOne({ uuid: socket.payload.uuid });
+        socket.leave(`${fetchedLivestream._id}`);
+        if (userToLeave._id.equals(fetchedLivestream.broadcaster)) {
 
-        // Update the user document with null livestream field
-        userToLeave.livestream = null;
-        await userToLeave.save();
 
-        // Notify all clients that the livestream has ended.
-        liveStreamIO.emit('end', fetchedLivestream._id);
-        return; 
+          // Delete the livestream document from the database
+          await Livestream.deleteOne({_id:fetchedLivestream._id});
+
+          // Update the user document with null livestream field
+          userToLeave.livestream = null;
+          await userToLeave.save();
+
+          // Notify all clients that the livestream has ended.
+          liveStreamIO.emit('end', fetchedLivestream._id);
+          return;
+        }
+        await fetchedLivestream.removeViewer(userToLeave);
+        let lsAfterLeaving = await Livestream.findById(fetchedLivestream._id).populate({ path: 'broadcaster', model: 'User' }).populate({ path: 'viewers.users.user', select: 'name email uuid', model: 'User' });
+        //console.log(lsAfterLeaving);
+        liveStreamIO.emit('update-livestreams', lsAfterLeaving);
+        socket.emit('leave-success');
+      } catch (e) {
+        console.log(e);
+        socket.emit('leave-error');
       }
-      await fetchedLivestream.removeViewer(userToLeave);
-      let lsAfterLeaving = await Livestream.findById(fetchedLivestream._id).populate({ path: 'broadcaster', model: 'User' }).populate({ path: 'viewers.users.user', select: 'name email uuid', model: 'User' });
-      //console.log(lsAfterLeaving);
-      liveStreamIO.emit('update-livestreams',lsAfterLeaving);
-      socket.emit('leave-success');
-    }catch(e){
-      console.log(e);
-      socket.emit('leave-error');
-     }
 
     });
-    socket.on('send-message', (message, uid) => {
-      socket.emit('recive-message', message, uid);
+    socket.on('send-message', async (message, roomID, callback) => {
+      try {
+        const sender = await User.findOne({ uuid: socket.payload.uuid });
+        const messageToSave = {
+          senderUIID: socket.payload.uuid,
+          messageBody: message,
+          senderName: sender.name
+        }
+        const liveStreamfet = await Livestream.findById(roomID);
+        const savedMessage = await liveStreamfet.addMessage(messageToSave);
+        callback({ sent: true });
+        liveStreamIO.to(roomID).emit('recive-message', savedMessage);
+      } catch (e) {
+        console.log(e);
+        callback({ sent: false });
+      }
     });
   });
 }

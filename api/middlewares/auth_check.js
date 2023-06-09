@@ -6,7 +6,8 @@ module.exports = (req, res, next) => {
         const decoded = jwt.verify(token, process.env.JWTPRIVATE);
         //console.log("passed");
         console.log(decoded);
-        req.uuid = decoded;
+        req.uuid = decoded.uuid;
+        req._id=decoded._id;
         next();
     } catch {
         console.log("token verify error");

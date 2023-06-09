@@ -70,7 +70,7 @@ const signUpUser = async (req, res) => {
         // Hash the password using bcrypt
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        const uuid = await generateUniqueRandomInt(1000000000, 9999999999);
+        const uuid = await generateUniqueRandomInt(1, 99999999);
 
         // Create a new user instance
         const newUser = new User({
@@ -124,7 +124,7 @@ const signInUser = async (req, res) => {
         }
 
         // Generate a JSON Web Token
-        const token = jwt.sign({ uuid: user.uuid }, process.env.JWTPRIVATE, { expiresIn: '60d' });
+        const token = jwt.sign({ uuid: user.uuid,_id:user._id }, process.env.JWTPRIVATE, { expiresIn: '60d' });
 
         return res.json({
             user: user,
@@ -163,7 +163,7 @@ const renewToken = async (req, res) => {
         }
 
         // Generate a new JSON Web Token with a new expiration time
-        const newToken = jwt.sign({ uuid: user.uuid }, process.env.JWTPRIVATE, { expiresIn: '60d' });
+        const newToken = jwt.sign({ uuid: user.uuid ,_id:user._id}, process.env.JWTPRIVATE, { expiresIn: '60d' });
         return res.status(200).json({
             token: newToken,
         });
